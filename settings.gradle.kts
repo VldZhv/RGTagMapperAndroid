@@ -1,39 +1,67 @@
-val sdkmgr = File(latest, "bin/sdkmanager").absolutePath
+// settings.gradle.kts
+import java.io.File
+import java.util.Properties
 
-fun runProc(cmd: List<String>, workDir: File = rootDir) {
-    println(">> " + cmd.joinToString(" "))
-    val proc = ProcessBuilder(cmd)
+// Где будет лежать SDK (можно поменять при желании)
+val sdkRoot = File(rootDir, ".android-sdk")
+
+// Путь к cmdline-tools/latest (у вас они уже скачиваются авто-скриптом)
+val cmdlineToolsLatest = File(sdkRoot, "cmdline-tools/latest")
+val sdkManager = File(cmdlineToolsLatest, "bin/sdkmanager").absolutePath
+
+fun runProc(args: List<String>, workDir: File = rootDir) {
+    println(">> " + args.joinToString(" "))
+    val pb = ProcessBuilder(args)
         .directory(workDir)
         .redirectErrorStream(true)
         .start()
-    proc.inputStream.bufferedReader().useLines { it.forEach(::println) }
-    val code = proc.waitFor()
-    if (code != 0) error("Command failed: ${cmd.joinToString(" ")} (exit=$code)")
+    pb.inputStream.bufferedReader().useLines { it.forEach(::println) }
+    val code = pb.waitFor()
+    if (code != 0) error("Command failed: ${args.joinToString(" ")} (exit=$code)")
+}
+
+fun writeLocalProps(sdkPath: String) {
+    val file = File(rootDir, "local.properties")
+    val props = Properties()
+    if (file.exists()) file.inputStream().use { props.load(it) }
+    props["sdk.dir"] = File(sdkPath).absolutePath.replace("\\", "\\\\")
+    file.outputStream().use { props.store(it, null) }
 }
 
 fun acceptLicenses() {
-    // без bash/pipe: просто передаём "--licenses"
-    runProc(listOf(sdkmgr, "--sdk_root=${sdkRoot.path}", "--licenses"))
+    runProc(listOf(sdkManager, "--sdk_root=${sdkRoot.path}", "--licenses"))
 }
 
 fun installSdk(api: Int = 34, buildTools: String = "34.0.0") {
-    // каждый аргумент отдельным элементом списка (важно!)
-    runProc(listOf(
-        sdkmgr, "--sdk_root=${sdkRoot.path}",
-        "platform-tools",
-        "platforms;android-$api",
-        "build-tools;$buildTools"
-    ))
+    runProc(
+        listOf(
+            sdkManager, "--sdk_root=${sdkRoot.path}",
+            "platform-tools",
+            "platforms;android-$api",
+            "build-tools;$buildTools"
+        )
+    )
 }
 
-println("Installing Android SDK packages...")
-acceptLicenses()
-installSdk(api = 34, buildTools = "34.0.0")
+// Ставим SDK только если его нет
+val needInstall = !File(sdkRoot, "platforms/android-34").exists()
 
-System.setProperty("android.sdk.root", sdkRoot.path)
-System.setProperty("android.home", sdkRoot.path)
-writeLocalProps(sdkRoot.path)
-println("Android SDK installed at: ${sdkRoot.path}")
+if (cmdlineToolsLatest.exists() && File(sdkManager).exists()) {
+    println("Installing Android SDK packages...")
+    if (needInstall) {
+        acceptLicenses()
+        installSdk(api = 34, buildTools = "34.0.0") // поменяйте при необходимости
+    } else {
+        println("Android SDK already present at: ${sdkRoot.path}")
+    }
+    System.setProperty("android.sdk.root", sdkRoot.path)
+    System.setProperty("android.home", sdkRoot.path)
+    writeLocalProps(sdkRoot.path)
+    println("Android SDK ready at: ${sdkRoot.path}")
+} else {
+    println("WARNING: cmdline-tools not found at $cmdlineToolsLatest — пропускаю авто-установку SDK.")
+    println("Убедитесь, что авто-скрипт скачал cmdline-tools, или задайте ANDROID_SDK_ROOT/ANDROID_HOME.")
+}
 
 
 
