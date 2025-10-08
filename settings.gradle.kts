@@ -1,21 +1,84 @@
 // settings.gradle.kts
-import java.io.File
+import java.io.*
+import java.net.URL
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.Properties
+import java.util.zip.ZipInputStream
 
-// Где будет лежать SDK (можно поменять при желании)
+// === Параметры, при необходимости поменяйте под свой compileSdk/buildTools ===
 val sdkRoot = File(rootDir, ".android-sdk")
+val compileSdk = 34
+val buildTools = "34.0.0"
 
-// Путь к cmdline-tools/latest (у вас они уже скачиваются авто-скриптом)
+// Подбираем ZIP для cmdline-tools по ОС (значения проверенные; при желании обновите revision)
+val cltUrl = when (System.getProperty("os.name").lowercase()) {
+    in listOf("mac os x", "macos", "darwin") -> "https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip"
+    in listOf("windows 10", "windows 11", "windows 7", "windows 8", "windows") -> "https://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip"
+    else -> "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+}
+
 val cmdlineToolsLatest = File(sdkRoot, "cmdline-tools/latest")
 val sdkManager = File(cmdlineToolsLatest, "bin/sdkmanager").absolutePath
 
-fun runProc(args: List<String>, workDir: File = rootDir) {
-    println(">> " + args.joinToString(" "))
+fun log(msg: String) = println("[android-sdk] $msg")
+
+fun unzip(zipStream: InputStream, destDir: File) {
+    ZipInputStream(BufferedInputStream(zipStream)).use { zis ->
+        var entry = zis.nextEntry
+        while (entry != null) {
+            val outFile = File(destDir, entry.name)
+            if (entry.isDirectory) {
+                outFile.mkdirs()
+            } else {
+                outFile.parentFile?.mkdirs()
+                FileOutputStream(outFile).use { fos ->
+                    zis.copyTo(fos)
+                }
+                if (outFile.name.endsWith(".sh") || outFile.name.endsWith(".bat")) {
+                    outFile.setExecutable(true)
+                }
+            }
+            zis.closeEntry()
+            entry = zis.nextEntry
+        }
+    }
+}
+
+fun ensureCmdlineTools() {
+    if (cmdlineToolsLatest.exists()) return
+    log("cmdline-tools не найдены, скачиваю…")
+    sdkRoot.mkdirs()
+    val tmpZip = Files.createTempFile("cmdline-tools", ".zip").toFile()
+    URL(cltUrl).openStream().use { ins ->
+        Files.copy(ins, tmpZip.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    }
+    // В ZIP корне папка cmdline-tools — распакуем и переместим её в cmdline-tools/latest
+    val tmpDir = Files.createTempDirectory("clt-unzip").toFile()
+    FileInputStream(tmpZip).use { unzip(it, tmpDir) }
+    val unpacked = File(tmpDir, "cmdline-tools")
+    val targetParent = File(sdkRoot, "cmdline-tools")
+    targetParent.mkdirs()
+    unpacked.copyRecursively(File(targetParent, "latest"), overwrite = true)
+    tmpZip.delete()
+    tmpDir.deleteRecursively()
+}
+
+fun runProcInteractive(args: List<String>) {
+    log(">> " + args.joinToString(" "))
     val pb = ProcessBuilder(args)
-        .directory(workDir)
         .redirectErrorStream(true)
         .start()
-    pb.inputStream.bufferedReader().useLines { it.forEach(::println) }
+    // Периодически отвечаем "y" на лицензионные вопросы
+    val writer = BufferedWriter(OutputStreamWriter(pb.outputStream))
+    val reader = BufferedReader(InputStreamReader(pb.inputStream))
+    var line: String?
+    while (reader.readLine().also { line = it } != null) {
+        println(line)
+        if (line!!.contains("[y/N]", ignoreCase = true) || line!!.contains("Accept? (y/N)", ignoreCase = true)) {
+            writer.write("y\n"); writer.flush()
+        }
+    }
     val code = pb.waitFor()
     if (code != 0) error("Command failed: ${args.joinToString(" ")} (exit=$code)")
 }
@@ -28,40 +91,51 @@ fun writeLocalProps(sdkPath: String) {
     file.outputStream().use { props.store(it, null) }
 }
 
-fun acceptLicenses() {
-    runProc(listOf(sdkManager, "--sdk_root=${sdkRoot.path}", "--licenses"))
-}
-
-fun installSdk(api: Int = 34, buildTools: String = "34.0.0") {
-    runProc(
+fun ensureSdkPackages() {
+    // чтобы не дергать каждый раз
+    val platformOk = File(sdkRoot, "platforms/android-$compileSdk").exists()
+    val buildToolsOk = File(sdkRoot, "build-tools/$buildTools").exists()
+    if (platformOk && buildToolsOk) return
+    runProcInteractive(listOf(sdkManager, "--sdk_root=${sdkRoot.path}", "--licenses"))
+    runProcInteractive(
         listOf(
             sdkManager, "--sdk_root=${sdkRoot.path}",
             "platform-tools",
-            "platforms;android-$api",
+            "platforms;android-$compileSdk",
             "build-tools;$buildTools"
         )
     )
 }
 
-// Ставим SDK только если его нет
-val needInstall = !File(sdkRoot, "platforms/android-34").exists()
-
-if (cmdlineToolsLatest.exists() && File(sdkManager).exists()) {
-    println("Installing Android SDK packages...")
-    if (needInstall) {
-        acceptLicenses()
-        installSdk(api = 34, buildTools = "34.0.0") // поменяйте при необходимости
-    } else {
-        println("Android SDK already present at: ${sdkRoot.path}")
-    }
-    System.setProperty("android.sdk.root", sdkRoot.path)
-    System.setProperty("android.home", sdkRoot.path)
-    writeLocalProps(sdkRoot.path)
-    println("Android SDK ready at: ${sdkRoot.path}")
-} else {
-    println("WARNING: cmdline-tools not found at $cmdlineToolsLatest — пропускаю авто-установку SDK.")
-    println("Убедитесь, что авто-скрипт скачал cmdline-tools, или задайте ANDROID_SDK_ROOT/ANDROID_HOME.")
+fun File.makeExecutableRecursively() {
+    if (isFile) setExecutable(true)
+    if (isDirectory) walkTopDown().forEach { if (it.isFile) it.setExecutable(true) }
 }
+
+// === bootstrap ===
+try {
+    ensureCmdlineTools()
+    // иногда после распаковки теряются +x — вернём
+    File(cmdlineToolsLatest, "bin").apply { if (exists()) makeExecutableRecursively() }
+
+    if (!File(sdkManager).exists()) {
+        log("sdkmanager всё ещё не найден по пути: $sdkManager")
+    } else {
+        ensureSdkPackages()
+        System.setProperty("android.sdk.root", sdkRoot.path)
+        System.setProperty("android.home", sdkRoot.path)
+        writeLocalProps(sdkRoot.path)
+        // репорты SDK любят наличие файла repositories.cfg
+        File(System.getProperty("user.home")).resolve(".android").apply {
+            mkdirs(); resolve("repositories.cfg").apply { if (!exists()) createNewFile() }
+        }
+        log("Android SDK готов: ${sdkRoot.path}")
+    }
+} catch (t: Throwable) {
+    log("WARNING: не удалось подготовить SDK автоматически: ${t.message}")
+    log("Если сборка всё ещё падает, укажите ANDROID_SDK_ROOT/ANDROID_HOME или положите cmdline-tools вручную.")
+}
+
 
 
 
