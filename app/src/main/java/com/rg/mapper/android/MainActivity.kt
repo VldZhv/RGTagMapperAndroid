@@ -1,26 +1,49 @@
 ﻿package com.rg.mapper.android
 
-import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import com.rg.mapper.android.model.*
-import com.rg.mapper.android.ui.*
-import com.rg.mapper.android.util.*
-import kotlin.math.hypot
+import com.rg.mapper.android.model.Anchor
+import com.rg.mapper.android.model.Hall
+import com.rg.mapper.android.model.Zone
+import com.rg.mapper.android.ui.AnchorDialog
+import com.rg.mapper.android.ui.HallDialog
+import com.rg.mapper.android.ui.PlanCanvas
+import com.rg.mapper.android.ui.PlanEditorState
+import com.rg.mapper.android.ui.Selection
+import com.rg.mapper.android.ui.ToolMode
+import com.rg.mapper.android.ui.ZoneDialog
+import com.rg.mapper.android.util.loadProjectJson
+import com.rg.mapper.android.R
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,46 +58,17 @@ private fun AppUI() {
     val state = remember { PlanEditorState() }
     val context = LocalContext.current
 
-    // ---------- Pickers ----------
-    val pickImage = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri ?: return@rememberLauncherForActivityResult
-        val bmp = loadBitmapFromUri(context.contentResolver, uri) ?: return@rememberLauncherForActivityResult
-        state.background = bmp
-        state.bgWidthPx = bmp.width
-        state.bgHeightPx = bmp.height
-        state.gridCalibrated = false
-        state.mode = ToolMode.Calibrate
-    }
-
-    val saveProject = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri: Uri? ->
-        uri ?: return@rememberLauncherForActivityResult
-        writeTextToUri(context, uri, state.toProjectJson())
-        Toast.makeText(context, "Проект сохранён", Toast.LENGTH_SHORT).show()
-    }
-
-    val loadProject = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        uri ?: return@rememberLauncherForActivityResult
-        try {
-            val json = readTextFromUri(context, uri)
+    LaunchedEffect(Unit) {
+        if (state.halls.isNotEmpty() || state.zones.isNotEmpty() || state.anchors.isNotEmpty()) return@LaunchedEffect
+        runCatching {
+            context.resources.openRawResource(R.raw.default_project).use { stream ->
+                BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
+            }
+        }.onSuccess { json ->
             state.loadProjectJson(json)
-            Toast.makeText(context, "Проект загружен", Toast.LENGTH_SHORT).show()
-        } catch (t: Throwable) {
-            Toast.makeText(context, "Ошибка загрузки: ${t.message}", Toast.LENGTH_LONG).show()
+        }.onFailure { error ->
+            Toast.makeText(context, "Не удалось загрузить проект: ${error.message}", Toast.LENGTH_LONG).show()
         }
-    }
-
-    val exportJson = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri: Uri? ->
-        uri ?: return@rememberLauncherForActivityResult
-        writeTextToUri(context, uri, state.toExportJson())
-        Toast.makeText(context, "Экспортировано в config.json", Toast.LENGTH_SHORT).show()
     }
 
     // ---------- Dialog state ----------
@@ -117,27 +111,12 @@ private fun AppUI() {
                     .padding(padding)
             ) {
                 // ---------- Панель 1: Файлы ----------
-                Row(
+                Text(
+                    text = "Готовый проект загружен автоматически. Долгий тап по объекту открывает его параметры.",
                     modifier = Modifier
                         .fillMaxWidth()
-                        .zIndex(1f)
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(onClick = { pickImage.launch(arrayOf("image/*")) }) {
-                        Text("Открыть план")
-                    }
-                    OutlinedButton(onClick = {
-                        loadProject.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
-                    }) { Text("Загрузить проект") }
-                    OutlinedButton(onClick = { saveProject.launch("project.json") }) {
-                        Text("Сохранить проект")
-                    }
-                    OutlinedButton(onClick = { exportJson.launch("config.json") }) {
-                        Text("Экспорт JSON")
-                    }
-                }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                )
 
                 // ---------- Панель 2: Режимы ----------
                 Row(
@@ -157,21 +136,6 @@ private fun AppUI() {
                         selected = state.mode == ToolMode.Calibrate,
                         onClick = { state.mode = ToolMode.Calibrate },
                         label = { Text("Калибровка") }
-                    )
-                    FilterChip(
-                        selected = state.mode == ToolMode.AddHall,
-                        onClick = { state.mode = ToolMode.AddHall },
-                        label = { Text("Зал") }
-                    )
-                    FilterChip(
-                        selected = state.mode == ToolMode.AddZone,
-                        onClick = { state.mode = ToolMode.AddZone },
-                        label = { Text("Зона") }
-                    )
-                    FilterChip(
-                        selected = state.mode == ToolMode.AddAnchor,
-                        onClick = { state.mode = ToolMode.AddAnchor },
-                        label = { Text("Якорь") }
                     )
                 }
 
