@@ -1,39 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-USER_HOME="/home/vscode"
-SDK_DIR="${ANDROID_SDK_ROOT:-$USER_HOME/android-sdk}"
-PROJECT_DIR="/workspace/RGTagMapperAndroid"   # если путь иной — поправьте
+SDK_DIR="/home/vscode/android-sdk"
+PROJECT_DIR="/workspace/RGTagMapperAndroid"
 
+# 1) (Если gradlew оставили и успели починить права — хорошо; если удалили — этот шаг просто пропустится)
+if [ -f "${PROJECT_DIR}/gradlew" ]; then
+  chmod +x "${PROJECT_DIR}/gradlew" || true
+fi
+
+# 2) Установка commandline-tools
 mkdir -p "$SDK_DIR/cmdline-tools"
 cd /tmp
-
-# Скачиваем commandline-tools (Linux)
-echo "Downloading Android commandline-tools..."
-curl -L -o cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
+curl -fsSL -o cmdline-tools.zip "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
 unzip -q cmdline-tools.zip -d "$SDK_DIR/cmdline-tools"
 mv "$SDK_DIR/cmdline-tools/cmdline-tools" "$SDK_DIR/cmdline-tools/latest"
 
-# Лицензии и базовые компоненты
+# 3) Лицензии + базовые пакеты
 yes | sdkmanager --licenses
 sdkmanager "platform-tools" "cmdline-tools;latest"
 
-# Узнаём compileSdk из gradle (по умолчанию 34, если не нашли)
-COMPILE_SDK=$(grep -R "compileSdk" "$PROJECT_DIR/app/build.gradle.kts" | head -n1 | sed -E 's/[^0-9]*([0-9]+).*/\1/' || true)
-if [[ -z "$COMPILE_SDK" ]]; then COMPILE_SDK=34; fi
-
-echo "Installing platforms;android-${COMPILE_SDK} and build-tools..."
+# 4) Платформа и build-tools под compileSdk проекта
+COMPILE_SDK=$(grep -R "compileSdk" "${PROJECT_DIR}/app/build.gradle.kts" | head -n1 | sed -E 's/[^0-9]*([0-9]+).*/\1/' || true)
+[ -z "$COMPILE_SDK" ] && COMPILE_SDK=34
 sdkmanager "platforms;android-${COMPILE_SDK}" || true
-# Подберите актуальную версию build-tools под ваш compileSdk
-# На 34 обычно 34.0.0:
-sdkmanager "build-tools;34.0.0" || true
+sdkmanager "build-tools;${COMPILE_SDK}.0.0" || sdkmanager "build-tools;34.0.0" || true
 
-# Пишем local.properties с корректным SDK
+# 5) Записать корректный путь SDK
 echo "sdk.dir=${SDK_DIR}" > "${PROJECT_DIR}/local.properties"
 chown vscode:vscode "${PROJECT_DIR}/local.properties"
 
-# Небольшая проверка
-echo "java -version:"
-java -version
-echo "sdkmanager location:"
+# (Опционально) мини-проверка в лог
+java -version || true
 which sdkmanager || true
