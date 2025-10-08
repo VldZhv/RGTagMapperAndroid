@@ -1,0 +1,11 @@
+{
+  "name": "RGTagMapperAndroid",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "remoteUser": "vscode", 
+  "features": {
+    // по желанию: "ghcr.io/devcontainers/features/java:1": { "version": "17" }
+  }
+}
