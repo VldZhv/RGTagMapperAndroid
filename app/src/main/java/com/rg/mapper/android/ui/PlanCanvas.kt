@@ -26,9 +26,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import com.rg.mapper.android.model.*
-import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.round
 
 @Composable
@@ -91,63 +89,9 @@ fun PlanCanvas(
                     },
                     onTap = { pos ->
                         val scene = toScene(pos)
-                        when (state.mode) {
-                            ToolMode.Calibrate -> {
-                                if (state.tempPointA == null) state.tempPointA = scene
-                                else { state.tempPointA = scene; onLongPressEdit(Selection()) }
-                            }
-                            ToolMode.AddHall -> {
-                                if (!state.gridCalibrated) return@detectTapGestures
-                                if (state.tempPointA == null) state.tempPointA = scene
-                                else {
-                                    val h = state.addHallByPoints(state.tempPointA!!, scene)
-                                    state.selection = Selection(hallNumber = h.number)
-                                    onLongPressEdit(state.selection)
-                                    state.tempPointA = null
-                                }
-                            }
-                            ToolMode.AddZone -> {
-                                val hall = state.hallAt(scene) ?: return@detectTapGestures
-                                if (state.tempPointA == null) {
-                                    state.tempPointA = scene
-                                } else {
-                                    val a = state.tempPointA!!
-                                    if (state.hallAt(scene)?.number == hall.number) {
-                                        val blX = min(a.x, scene.x) - hall.xPx
-                                        val blY = max(a.y, scene.y) - hall.yPx // bottom_left_y от ВЕРХА
-                                        val w = abs(scene.x - a.x)
-                                        val h = abs(scene.y - a.y)
-                                        val z = Zone(
-                                            hallNumber = hall.number,
-                                            zoneNum = state.nextZoneNumber(hall.number),
-                                            type = ZoneType.ENTER,
-                                            angleDeg = 0,
-                                            blX_Px = blX,
-                                            blY_Px = blY,
-                                            wPx = w,
-                                            hPx = h
-                                        )
-                                        state.zones.add(z)
-                                        state.selection = Selection(hallNumber = hall.number, zoneKey = hall.number to z.zoneNum)
-                                        onLongPressEdit(state.selection)
-                                    }
-                                    state.tempPointA = null
-                                }
-                            }
-                            ToolMode.AddAnchor -> {
-                                val hall = state.hallAt(scene) ?: return@detectTapGestures
-                                val a = Anchor(
-                                    number = state.nextAnchorNumber(),
-                                    xScenePx = scene.x,
-                                    yScenePx = scene.y,
-                                    zCm = 0,
-                                    mainHall = hall.number
-                                )
-                                state.anchors.add(a)
-                                state.selection = Selection(anchorNumber = a.number)
-                                onLongPressEdit(state.selection)
-                            }
-                            else -> Unit
+                        if (state.mode == ToolMode.Calibrate) {
+                            if (state.tempPointA == null) state.tempPointA = scene
+                            else { state.tempPointA = scene; onLongPressEdit(Selection()) }
                         }
                     }
                 )
@@ -358,9 +302,6 @@ fun PlanCanvas(
         // подсказка
         val hint = when (state.mode) {
             ToolMode.Calibrate -> "Калибровка: два тапа — 2 точки"
-            ToolMode.AddHall   -> "Добавление зала: два тапа — противоположные углы"
-            ToolMode.AddZone   -> "Добавление зоны: два тапа внутри зала"
-            ToolMode.AddAnchor -> "Добавление якоря: тап по залу"
             else               -> "Панорама: свайп одним пальцем; Зум: щипок; Долгий тап — редактировать"
         }
         drawIntoCanvas {

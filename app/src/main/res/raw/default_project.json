@@ -1,0 +1,102 @@
+{
+  "image_data": "",
+  "pixel_per_cm_x": 2.5,
+  "pixel_per_cm_y": 2.5,
+  "grid_step_cm": 50.0,
+  "lock_halls": false,
+  "lock_zones": false,
+  "lock_anchors": false,
+  "halls": [
+    {
+      "num": 1,
+      "name": "Основной зал",
+      "x_px": 100.0,
+      "y_px": 80.0,
+      "w_px": 2000.0,
+      "h_px": 1200.0,
+      "zones": [
+        {
+          "zone_num": 1,
+          "zone_type": "Входная зона",
+          "zone_angle": 0,
+          "bottom_left_x": 200.0,
+          "bottom_left_y": 400.0,
+          "w_px": 420.0,
+          "h_px": 320.0
+        },
+        {
+          "zone_num": 1,
+          "zone_type": "Выходная зона",
+          "zone_angle": 0,
+          "bottom_left_x": 1180.0,
+          "bottom_left_y": 620.0,
+          "w_px": 380.0,
+          "h_px": 300.0
+        },
+        {
+          "zone_num": 2,
+          "zone_type": "Переходная",
+          "zone_angle": 15,
+          "bottom_left_x": 860.0,
+          "bottom_left_y": 940.0,
+          "w_px": 520.0,
+          "h_px": 260.0
+        }
+      ]
+    },
+    {
+      "num": 2,
+      "name": "Склад",
+      "x_px": 2300.0,
+      "y_px": 80.0,
+      "w_px": 1200.0,
+      "h_px": 900.0,
+      "zones": [
+        {
+          "zone_num": 1,
+          "zone_type": "Входная зона",
+          "zone_angle": 0,
+          "bottom_left_x": 180.0,
+          "bottom_left_y": 360.0,
+          "w_px": 320.0,
+          "h_px": 240.0
+        }
+      ]
+    }
+  ],
+  "anchors": [
+    {
+      "number": 1,
+      "x": 420.0,
+      "y": 320.0,
+      "z": 250,
+      "main_hall": 1,
+      "extra_halls": [2]
+    },
+    {
+      "number": 2,
+      "x": 1520.0,
+      "y": 540.0,
+      "z": 250,
+      "main_hall": 1,
+      "extra_halls": []
+    },
+    {
+      "number": 3,
+      "x": 2640.0,
+      "y": 420.0,
+      "z": 240,
+      "main_hall": 2,
+      "extra_halls": []
+    },
+    {
+      "number": 4,
+      "x": 2980.0,
+      "y": 720.0,
+      "z": 240,
+      "main_hall": 2,
+      "extra_halls": [1],
+      "bound": true
+    }
+  ]
+}

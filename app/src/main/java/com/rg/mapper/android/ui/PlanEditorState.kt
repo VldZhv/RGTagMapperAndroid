@@ -5,7 +5,7 @@ import androidx.compose.runtime.*
 import com.rg.mapper.android.model.*
 import kotlin.math.*
 
-enum class ToolMode { Cursor, Calibrate, AddHall, AddZone, AddAnchor }
+enum class ToolMode { Cursor, Calibrate }
 
 data class Selection(
     val hallNumber: Int? = null,
@@ -38,36 +38,6 @@ class PlanEditorState {
     fun clearAll() {
         halls.clear(); zones.clear(); anchors.clear()
         selection = Selection(); tempPointA = null
-    }
-
-    fun addHallByPoints(a: androidx.compose.ui.geometry.Offset, b: androidx.compose.ui.geometry.Offset): Hall {
-        val x0 = min(a.x, b.x); val y0 = min(a.y, b.y)
-        val x1 = max(a.x, b.x); val y1 = max(a.y, b.y)
-        val stepPx = pixelPerCm * gridStepCm
-        fun snap(v: Float) = if (stepPx > 0f) round(v / stepPx) * stepPx else v
-        val sx0 = snap(x0); val sy0 = snap(y0)
-        var sx1 = snap(x1); var sy1 = snap(y1)
-        if (sx1 == sx0) sx1 = sx0 + stepPx
-        if (sy1 == sy0) sy1 = sy0 + stepPx
-        val hall = Hall(
-            number = nextHallNumber(),
-            name = "",
-            xPx = sx0, yPx = sy0,
-            wPx = (sx1 - sx0), hPx = (sy1 - sy0)
-        )
-        halls.add(hall); return hall
-    }
-
-    fun nextHallNumber(): Int = (halls.maxOfOrNull { it.number } ?: 0) + 1
-    fun nextZoneNumber(hallNumber: Int): Int = (zones.filter { it.hallNumber == hallNumber }.maxOfOrNull { it.zoneNum } ?: 0) + 1
-    fun nextAnchorNumber(): Int = (anchors.maxOfOrNull { it.number } ?: 0) + 1
-
-    fun resnapAllToGrid() {
-        val stepPx = pixelPerCm * gridStepCm
-        fun snap(v: Float) = if (stepPx > 0f) round(v / stepPx) * stepPx else v
-        halls.replaceAll { it.copy(xPx = snap(it.xPx), yPx = snap(it.yPx)) }
-        anchors.replaceAll { it.copy(xScenePx = snap(it.xScenePx), yScenePx = snap(it.yScenePx)) }
-        zones.replaceAll { it.copy(blX_Px = snap(it.blX_Px), blY_Px = snap(it.blY_Px)) }
     }
 
     fun hallAt(scene: androidx.compose.ui.geometry.Offset): Hall? =
