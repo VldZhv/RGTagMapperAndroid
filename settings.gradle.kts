@@ -64,24 +64,36 @@ fun ensureCmdlineTools() {
     tmpDir.deleteRecursively()
 }
 
-fun runProcInteractive(args: List<String>) {
+fun runYes(args: List<String>, yesSeconds: Int = 120) {
     log(">> " + args.joinToString(" "))
     val pb = ProcessBuilder(args)
-        .redirectErrorStream(true)
-        .start()
-    // Периодически отвечаем "y" на лицензионные вопросы
-    val writer = BufferedWriter(OutputStreamWriter(pb.outputStream))
-    val reader = BufferedReader(InputStreamReader(pb.inputStream))
-    var line: String?
-    while (reader.readLine().also { line = it } != null) {
-        println(line)
-        if (line!!.contains("[y/N]", ignoreCase = true) || line!!.contains("Accept? (y/N)", ignoreCase = true)) {
-            writer.write("y\n"); writer.flush()
+    pb.redirectErrorStream(true)
+    val p = pb.start()
+
+    // Пишем "y" в stdin каждые ~150 мс в течение yesSeconds
+    val feeder = Thread {
+        BufferedWriter(OutputStreamWriter(p.outputStream)).use { w ->
+            val end = System.currentTimeMillis() + yesSeconds * 1000L
+            while (System.currentTimeMillis() < end) {
+                w.write("y\n")
+                w.flush()
+                try { Thread.sleep(150) } catch (_: InterruptedException) { break }
+            }
         }
     }
-    val code = pb.waitFor()
-    if (code != 0) error("Command failed: ${args.joinToString(" ")} (exit=$code)")
+    feeder.isDaemon = true
+    feeder.start()
+
+    // Пробрасываем вывод в лог
+    BufferedReader(InputStreamReader(p.inputStream)).use { r ->
+        var line: String?
+        while (r.readLine().also { line = it } != null) println(line)
+    }
+
+    val code = p.waitFor()
+    if (code != 0) log("WARNING: '${args.first()}' завершилась с кодом $code (продолжаем)")
 }
+
 
 fun writeLocalProps(sdkPath: String) {
     val file = File(rootDir, "local.properties")
@@ -92,12 +104,16 @@ fun writeLocalProps(sdkPath: String) {
 }
 
 fun ensureSdkPackages() {
-    // чтобы не дергать каждый раз
     val platformOk = File(sdkRoot, "platforms/android-$compileSdk").exists()
     val buildToolsOk = File(sdkRoot, "build-tools/$buildTools").exists()
     if (platformOk && buildToolsOk) return
-    runProcInteractive(listOf(sdkManager, "--sdk_root=${sdkRoot.path}", "--licenses"))
-    runProcInteractive(
+
+    // Сначала принять лицензии (в без-TTY режиме)
+    runYes(listOf(sdkManager, "--sdk_root=${sdkRoot.path}", "--licenses"))
+
+    // Затем поставить нужные пакеты — если лицензии всё ещё не приняты,
+    // runYes подтвердит их во время установки.
+    runYes(
         listOf(
             sdkManager, "--sdk_root=${sdkRoot.path}",
             "platform-tools",
@@ -106,6 +122,7 @@ fun ensureSdkPackages() {
         )
     )
 }
+
 
 fun File.makeExecutableRecursively() {
     if (isFile) setExecutable(true)
